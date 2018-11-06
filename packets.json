@@ -1,0 +1,34 @@
+{
+    "ServerBound": {
+        "Handshake": {
+            "State": "Handshaking",
+            "ID": 0,
+            "Fields": ["VarInt", "String", "Unsigned Short", "VarInt"],
+            "HandlerID": 0
+        },
+        "SLPRequest": {
+            "State": "SLP",
+            "ID": 0,
+            "Fields": [],
+            "HandlerID": 1
+        },
+        "Ping": {
+            "State": "SLP",
+            "ID": 1,
+            "Fields": ["Long"],
+            "HandlerID": 2
+        }
+    },
+    "ClientBound": {
+        "SLPResponse": {
+            "State": "SLP",
+            "ID": 0,
+            "Fields": ["String"]
+        },
+        "Pong": {
+            "State": "SLP",
+            "ID": 1,
+            "Fields": ["Long"]
+        }
+    }
+}
