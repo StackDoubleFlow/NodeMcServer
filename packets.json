@@ -17,6 +17,11 @@
             "ID": 1,
             "Fields": ["Long"],
             "HandlerID": 2
+        },
+        "LegacySLP": {
+            "State": "Handshaking",
+            "ID": 122,
+            "Fields": []
         }
     },
     "ClientBound": {

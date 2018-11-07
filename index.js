@@ -3,6 +3,20 @@
 const net = require('net');
 const packets = require('./packets.json');
 
+class PacketBatch {
+    constructor(buffer) {
+        this.buffers = [];
+        while(true) {
+            var length = VarInt.decode(buffer, 0);
+            this.buffers.push(buffer.slice(0, length.result + length.length));
+            if(length.result + length.length == buffer.length) {
+                break;
+            }
+            buffer = buffer.slice(length.result + length.length);
+        }
+    }
+}
+
 class Packet {
     constructor(buffer, boundTo, state) {
         this.buffer = buffer;
@@ -15,12 +29,13 @@ class Packet {
         ({result: dataLength, length: i} = VarInt.decode(this.buffer, 0));
         dataLength -= i * 2;
         ({result: packetID, length: i} = VarInt.decode(this.buffer, i));
-        dataLength += i;
-        var data = Buffer.alloc(dataLength + 1);
-        this.buffer.copy(data, 0, i, i + dataLength + 1);
+        dataLength += i + 1;
+        var data = Buffer.alloc(dataLength);
+        this.buffer.copy(data, 0, i, i + dataLength);
         this.data = data;
         this.packetID = packetID;
         this.readPacketData();
+
     }
     readPacketData() {
         for(var packet in packets[this.boundTo]) {
@@ -40,32 +55,33 @@ class Packet {
         }
         var fieldNames = packets[this.boundTo][this.name]["Fields"];
         console.log("Decoded packet \"" + this.name + "\" with the fields of " + fieldNames);
-        this.getPacketFeilds(fieldNames);
+        this.getPacketfields(fieldNames);
     }
-    getPacketFeilds(fieldNames) {
+    getPacketfields(fieldNames) {
         var i = 0;
-        this.feilds = [];
+        this.fields = [];
         fieldNames.forEach((fieldName)=> {
             var value;
             switch(fieldName) {
                 case "VarInt": 
                     ({result: value, length: i} = VarInt.decode(this.data, i));
-                    this.feilds.push(value);
+                    this.fields.push(value);
                     break;
                 case "String":
                     ({result: value, length: i} = ServerString.decode(this.data, i));
-                    this.feilds.push(value);
+                    this.fields.push(value);
                     break;
                 case "Unsigned Short":
-                    this.feilds.push((this.data[i] << 8) | this.data[i + 1]);
+                    this.fields.push((this.data[i] << 8) | this.data[i + 1]);
                     i += 2;
                     break;
                 case "Long":
                     var temp = 0;
                     for(var j = i; j < i + 8; j++) {
-                        temp = (this.data[i] << (8 * j)) | temp;
+                        temp = (this.data[i + j] << (8 * j)) | temp;
                     }
                     this.fields.push(temp);
+                    console.log(this.data);
                     i += 8;
                     break;
             }
@@ -109,19 +125,31 @@ class Client {
         this.state = "Handshaking";
         this.handlers = [this.HandshakeHandler, this.SLPRequestHandler, this.PingHandler];
     }
+    setState(state) {
+        this.state = state;
+    }
     sendPacket(packet) {
-        c.write(packet.buffer);
+        this.c.write(packet.buffer);
     }
     onDisconect() {
-
+        console.log("disconnect~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
     }
     onData(data) {
-        var packet = new Packet(data, "ServerBound", this.state);
-        packet.parse();
-        if(packet.error | packet.handlerID == -1) return;
-        this.handlers[packet.handlerID](packet.feilds);
+        var packets = new PacketBatch(data).buffers;
+        console.log("Received " + packets.length + " packets at once");
+        for(var buffer in packets) {
+            var packet = new Packet(packets[buffer], "ServerBound", this.state);
+            packet.parse();
+            if(packet.error | packet.handlerID == -1) return;
+            if(!this.handlers[packet.handlerID]) {
+                console.log("Handler ID " + packet.handlerID + " is missing!");
+                return;
+            }
+            this.handlers[packet.handlerID].bind(this)(packet.fields);
+        }
+        
     }
-    HandshakeHanlder(fields) { // 0
+    HandshakeHandler(fields) { // 0
         var protocall = fields[0], address = fields[1], port = fields[2], nextState = fields[3];
         if(nextState == 1) {
             this.state = "SLP";
@@ -130,10 +158,13 @@ class Client {
         }
     }
     SLPRequestHandler(fields) { // 1
-
+        this.sendPacket(PacketFactory.createPacket("SLPResponse", 
+        [
+            '{"version":{"name":"1.13.2","protocol":404},"players":{"max":100,"online":1,"sample":[{"name":"StackDoubleFlow","id":"2d553c1d-4eab-4f63-8191-a9b0f9d69d0d"}]},"description":{"text":"Hello world"}}'
+        ], this.state));
     }
     PingHandler(fields) { // 2
-
+        console.log(fields);
     }
 }
 
@@ -143,6 +174,7 @@ class Server {
         this.port = port;
         this.clients = [];
         this.server = net.createServer((c) => {
+            console.log("new~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
             var client = new Client(c);
             this.clients.push(client);
         });
@@ -172,17 +204,16 @@ class VarInt {
     }
 
     static encode(value) {
-        var buffer = Buffer.alloc(0);
+        var bytes = [];
         do {
-            var temp = value & 0b01111111;
-            value >>>=7;
+            var temp = (value & 0b01111111);
+            value >>>= 7;
             if (value != 0) {
                 temp |= 0b10000000;
             }
-            buffer.concat(buffer, [temp]);
+            bytes.push(temp);
         } while (value != 0);
-        console.log(buffer);
-        return buffer;
+        return Buffer.from(bytes);
     }
 }
 
@@ -196,6 +227,24 @@ class VarLong {
     }
 }
 
+class Long {
+    static decode(buffer) {
+        
+    }
+
+    static encode(value) {
+        var byteArray = [0, 0, 0, 0, 0, 0, 0, 0];
+    
+        for (var index = 0; index < byteArray.length; index++) {
+            var byte = value & 0xff;
+            byteArray[index] = byte;
+            value = (value - byte) / 256;
+        }
+        byteArray.reverse();
+        return Buffer.from(byteArray);
+    }
+}
+
 class ServerString {
     static decode(buffer, index) {
         var length;
@@ -203,7 +252,7 @@ class ServerString {
         return {result: buffer.toString('utf-8', index, index + length), length: index + length};
     }
     static encode(string) {
-        var output = Buffer.concat(VarInt.encode(string.length), Buffer.from(string, "utf-8"))
+        return Buffer.concat([VarInt.encode(string.length), Buffer.from(string, "utf-8")]);
     }
 }
 
