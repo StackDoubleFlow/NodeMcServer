@@ -54,7 +54,7 @@ class Packet {
             return;
         }
         var fieldNames = packets[this.boundTo][this.name]["Fields"];
-        console.log("Decoded packet \"" + this.name + "\" with the fields of " + fieldNames);
+        console.log("Packet \"" + this.name + "\"");
         this.getPacketfields(fieldNames);
     }
     getPacketfields(fieldNames) {
@@ -76,12 +76,7 @@ class Packet {
                     i += 2;
                     break;
                 case "Long":
-                    var temp = 0;
-                    for(var j = i; j < i + 8; j++) {
-                        temp = (this.data[i + j] << (8 * j)) | temp;
-                    }
-                    this.fields.push(temp);
-                    console.log(this.data);
+                    this.fields.push((this.data.readUInt32BE(i) << 32) | this.data.readUInt32BE(i + 4));
                     i += 8;
                     break;
             }
@@ -106,6 +101,12 @@ class PacketFactory {
                     break;
                 case "Unsigned Short":
                     data = Buffer.concat([data, fields[i] & 0xFFFF]);
+                    break;
+                case "Long":
+                    var temp = Buffer.alloc(8);
+                    temp.writeUInt32BE(fields[i] & 0xFFFFFFFF00000000, 0);
+                    temp.writeUInt32BE(fields[i] & 0x00000000FFFFFFFF, 4);
+                    data = Buffer.concat([data, temp]);
                     break;
             }
             i++;
@@ -136,7 +137,7 @@ class Client {
     }
     onData(data) {
         var packets = new PacketBatch(data).buffers;
-        console.log("Received " + packets.length + " packets at once");
+        //console.log("Received " + packets.length + " packets at once");
         for(var buffer in packets) {
             var packet = new Packet(packets[buffer], "ServerBound", this.state);
             packet.parse();
@@ -164,7 +165,8 @@ class Client {
         ], this.state));
     }
     PingHandler(fields) { // 2
-        console.log(fields);
+        this.sendPacket(PacketFactory.createPacket("Pong", fields, this.state));
+        this.c.end();
     }
 }
 
