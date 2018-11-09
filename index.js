@@ -121,6 +121,66 @@ class Packet {
     }
 }
 
+class ChunkFactory {
+    static createPacket(x, y) {
+        var data = this.calculateChunkData();
+        var fields = [x, y, true, 4, data.length, data, ]
+        var fieldNames = packets["ClientBound"][name]["Fields"];
+        var i = 0;
+        var data = BUffer.alloc(0);
+        fieldNames.forEach((fieldName) => {
+            switch (fieldName) {
+                case "Int":
+                    var temp = Buffer.alloc(4);
+                    temp.writeInt32BE(fields[i]);
+                    data = Buffer.concat([data, temp]);
+                    break;
+                case "Boolean":
+                    if(fields[i]) data = Buffer.concat([data, Buffer.from([0x1])])
+                    else data = Buffer.concat([data, Buffer.from([0x0])]);
+                    break;
+                case "VarInt": 
+                    data = Buffer.concat([data, VarInt.encode(fields[i])]);
+                    break;
+                case "ByteArray":
+
+                    break;
+                case "Array of NBT Tag":
+
+                    break;
+            }
+        });
+    }
+    static calculateChunkData() {
+        
+        fields = []
+        fieldNames = ["Unsigned Byte", "Palette", "VarInt", ""]
+        fieldNames.forEach((fieldName) => {
+            switch (fieldName) {
+                case "Int":
+                    var temp = Buffer.alloc(4);
+                    temp.writeInt32BE(fields[i]);
+                    data = Buffer.concat([data, temp]);
+                    break;
+                case "Boolean":
+                    if(fields[i]) data = Buffer.concat([data, Buffer.from([0x1])])
+                    else data = Buffer.concat([data, Buffer.from([0x0])]);
+                    break;
+                case "VarInt": 
+                    data = Buffer.concat([data, VarInt.encode(fields[i])]);
+                    break;
+                case "ByteArray":
+
+                    break;
+                case "Array of NBT Tag":
+
+                    break;
+            }
+        });
+    }
+
+}
+
 class PacketFactory {
     static createPacket(name, fields, state) {
         var packetID = packets["ClientBound"][name]["ID"];
@@ -128,7 +188,6 @@ class PacketFactory {
         var data = Buffer.alloc(0);
         var i = 0;
         fieldNames.forEach((fieldName) => {
-            var value;
             switch(fieldName) {
                 case "VarInt": 
                     data = Buffer.concat([data, VarInt.encode(fields[i])]);
@@ -182,10 +241,11 @@ class PacketFactory {
         var packetData = Buffer.concat([VarInt.encode(packetID), data]);
         var fullPacket = Buffer.concat([VarInt.encode(packetData.length), packetData]);
         var packet = new Packet(fullPacket, "ClientBound", state);
-        packet.parse();
+        console.log("S→C Packet \"" + name + "\"");
         return packet;
     }
 }
+
 
 
 class Client {
