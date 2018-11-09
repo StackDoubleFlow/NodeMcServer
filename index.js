@@ -3,6 +3,8 @@
 const net = require('net');
 const packets = require('./packets.json');
 
+var server;
+
 class PacketBatch {
     constructor(buffer) {
         this.buffers = [];
@@ -54,7 +56,11 @@ class Packet {
             return;
         }
         var fieldNames = packets[this.boundTo][this.name]["Fields"];
-        console.log("Packet \"" + this.name + "\"");
+        if(this.boundTo != "ClientBound") {
+            console.log("C→S Packet \"" + this.name + "\"");
+        } else {
+            console.log("S→C Packet \"" + this.name + "\"");
+        }
         this.getPacketfields(fieldNames);
     }
     getPacketfields(fieldNames) {
@@ -75,12 +81,43 @@ class Packet {
                     this.fields.push((this.data[i] << 8) | this.data[i + 1]);
                     i += 2;
                     break;
+                case "Unsigned Byte":
+                    this.fields.push(this.data.readInt8(i));
+                    i += 1;
+                    break;
                 case "Long":
                     this.fields.push((this.data.readUInt32BE(i) << 32) | this.data.readUInt32BE(i + 4));
                     i += 8;
                     break;
+                case "Byte":
+                    this.fields.push(this.data.readInt8(i));
+                    i += 1;
+                    break;
+                case "Boolean":
+                    var temp = this.data.readInt8(i);
+                    if(temp == 1) this.fields.push(true)
+                    else this.fields.push(false);
+                    break;
+                case "Identifier":
+                    ({result: value, length: i} = ServerString.decode(this.data, i));
+                    this.fields.push(value);
+                    break;
+                case "Byte Array":
+                    this.fields.push(this.decodeUniqueByteArray(i));
+                    break;
             }
         });
+    }
+    decodeUniqueByteArray(i) {
+        switch(this.packetID) {
+            case 0x0A:
+                var length = this.data.length - i;
+                var output = [];
+                for(var j = 0; j < length; j++) {
+                    output.push(this.data.readInt8(i + j));
+                }
+                return output;
+        }
     }
 }
 
@@ -100,12 +137,43 @@ class PacketFactory {
                     data = Buffer.concat([data, ServerString.encode(fields[i])]);
                     break;
                 case "Unsigned Short":
-                    data = Buffer.concat([data, fields[i] & 0xFFFF]);
+                    var temp = Buffer.alloc(2);
+                    temp.writeUInt16BE(fields[i]);
+                    data = Buffer.concat([data, temp]);
+                    break;
+                case "Unsigned Byte":
+                    var temp = Buffer.alloc(1);
+                    temp.writeUInt8(fields[i]);
+                    data = Buffer.concat([data, temp]);
                     break;
                 case "Long":
                     var temp = Buffer.alloc(8);
-                    temp.writeUInt32BE(fields[i] & 0xFFFFFFFF00000000, 0);
-                    temp.writeUInt32BE(fields[i] & 0x00000000FFFFFFFF, 4);
+                    temp.writeUInt32BE((fields[i] & 0xFFFFFFFF00000000) >>> 32, 0);
+                    temp.writeUInt32BE((fields[i] & 0x00000000FFFFFFFF) >>> 0, 4);
+                    data = Buffer.concat([data, temp]);
+                    break;
+                case "Int":
+                    var temp = Buffer.alloc(4);
+                    temp.writeInt32BE(fields[i]);
+                    data = Buffer.concat([data, temp]);
+                    break;
+                case "Boolean":
+                    if(fields[i]) data = Buffer.concat([data, Buffer.from([0x1])])
+                    else data = Buffer.concat([data, Buffer.from([0x0])]);
+                    break;
+                case "Double":
+                    var temp = Buffer.alloc(8);
+                    temp.writeDoubleBE(fields[i]);
+                    data = Buffer.concat([data, temp]);
+                    break;
+                case "Float":
+                    var temp = Buffer.alloc(4);
+                    temp.writeFloatBE(fields[i]);
+                    data = Buffer.concat([data, temp]);
+                    break;
+                case "Byte":
+                    var temp = Buffer.alloc(1);
+                    temp.writeUInt8(fields[i]);
                     data = Buffer.concat([data, temp]);
                     break;
             }
@@ -113,18 +181,27 @@ class PacketFactory {
         });
         var packetData = Buffer.concat([VarInt.encode(packetID), data]);
         var fullPacket = Buffer.concat([VarInt.encode(packetData.length), packetData]);
-        return new Packet(fullPacket, "ClientBound", state);
+        var packet = new Packet(fullPacket, "ClientBound", state);
+        packet.parse();
+        return packet;
     }
 }
 
 
 class Client {
-    constructor(c) {
+    constructor(c, ID) {
         c.on('end', this.onDisconect);
         c.on('data', this.onData.bind(this));
+        c.on('error', this.onDisconect);
+        this.ID = ID;
         this.c = c;
         this.state = "Handshaking";
-        this.handlers = [this.HandshakeHandler, this.SLPRequestHandler, this.PingHandler];
+        this.handlers = [this.HandshakeHandler, this.SLPRequestHandler, this.PingHandler, this.LoginStartHander];
+    }
+    sendKeepAlive() {
+        if(this.state == "Play") {
+            this.sendPacket(PacketFactory.createPacket("Keep Alive", [new Date().getTime()], this.state));
+        }
     }
     setState(state) {
         this.state = state;
@@ -134,6 +211,7 @@ class Client {
     }
     onDisconect() {
         console.log("disconnect~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+        server.deleteClient(this.ID);
     }
     onData(data) {
         var packets = new PacketBatch(data).buffers;
@@ -168,6 +246,13 @@ class Client {
         this.sendPacket(PacketFactory.createPacket("Pong", fields, this.state));
         this.c.end();
     }
+    LoginStartHander(fields) { // 3
+        this.username = fields[0];
+        this.sendPacket(PacketFactory.createPacket("Login Success", ["2d553c1d-4eab-4f63-8191-a9b0f9d69d0d", this.username], this.state));
+        this.state = "Play";
+        this.sendPacket(PacketFactory.createPacket("Join Game", [0, 1, 0, 2, 21, "flat", false], this.state));
+        this.sendPacket(PacketFactory.createPacket("Player Position And Look", [0, 64, 0, 0, 0, 0, 0], this.state));
+    }
 }
 
 class Server {
@@ -177,7 +262,7 @@ class Server {
         this.clients = [];
         this.server = net.createServer((c) => {
             console.log("new~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
-            var client = new Client(c);
+            var client = new Client(c, this.clients.length);
             this.clients.push(client);
         });
         this.server.listen(this.port, this.hostname, maxPlayers, ()=>{});
@@ -188,6 +273,15 @@ class Server {
                 console.error("Server closed due to an error!");
             }
         });
+        setInterval(this.sendKeepAlives.bind(this), 10000);
+    }
+    sendKeepAlives() {
+        for(var clientID in this.clients) {
+            this.clients[clientID].sendKeepAlive();
+        }
+    }
+    deleteClient(ID) {
+        this.clients.splice(ID, 1);
     }
 }
 
@@ -258,4 +352,4 @@ class ServerString {
     }
 }
 
-var server = new Server("127.0.0.1", 25565, 20);
+server = new Server("127.0.0.1", 25565, 20);

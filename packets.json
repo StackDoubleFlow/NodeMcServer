@@ -22,6 +22,27 @@
             "State": "Handshaking",
             "ID": 122,
             "Fields": []
+        },
+        "Login Start": {
+            "State": "Login",
+            "ID": 0,
+            "Fields": ["String"],
+            "HandlerID": 3
+        },
+        "Client Settings": {
+            "State": "Play",
+            "ID": 4,
+            "Fields": ["String", "Byte", "VarInt", "Boolean", "Unsigned Byte", "VarInt"]
+        },
+        "Plugin Message": {
+            "State": "Play",
+            "ID": 10,
+            "Fields": ["Indentifier", "Byte Array"]
+        },
+        "Keep Alive": {
+            "State": "Play",
+            "ID": 14,
+            "Fields": ["Long"]
         }
     },
     "ClientBound": {
@@ -34,6 +55,31 @@
             "State": "SLP",
             "ID": 1,
             "Fields": ["Long"]
+        },
+        "Login Success": {
+            "State": "Login",
+            "ID": 2,
+            "Fields": ["String", "String"]
+        },
+        "Join Game": {
+            "State": "Play",
+            "ID": 37,
+            "Fields": ["Int", "Unsigned Byte", "Int", "Unsigned Byte", "Unsigned Byte", "String", "Boolean"]
+        },
+        "Keep Alive": {
+            "State": "Play",
+            "ID": 33,
+            "Fields": ["Long"]
+        },
+        "Player Position And Look": {
+            "State": "Play",
+            "ID": 50,
+            "Fields": ["Double", "Double", "Double", "Float", "Float", "Byte", "VarInt"]
+        },
+        "Chunk Data": {
+            "State": "Play",
+            "ID": 34,
+            "Fields": ["Int", "Int", "Boolean", "VarInt", "VarInt", "Byte Array", "VarInt", "Array of NBT Tag"]
         }
     }
 }
