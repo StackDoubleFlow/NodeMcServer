@@ -122,61 +122,84 @@ class Packet {
 }
 
 class ChunkFactory {
-    static createPacket(x, y) {
-        var data = this.calculateChunkData();
-        var fields = [x, y, true, 4, data.length, data, ]
-        var fieldNames = packets["ClientBound"][name]["Fields"];
-        var i = 0;
-        var data = BUffer.alloc(0);
-        fieldNames.forEach((fieldName) => {
-            switch (fieldName) {
-                case "Int":
-                    var temp = Buffer.alloc(4);
-                    temp.writeInt32BE(fields[i]);
-                    data = Buffer.concat([data, temp]);
-                    break;
-                case "Boolean":
-                    if(fields[i]) data = Buffer.concat([data, Buffer.from([0x1])])
-                    else data = Buffer.concat([data, Buffer.from([0x0])]);
-                    break;
-                case "VarInt": 
-                    data = Buffer.concat([data, VarInt.encode(fields[i])]);
-                    break;
-                case "ByteArray":
-
-                    break;
-                case "Array of NBT Tag":
-
-                    break;
-            }
-        });
+    static createPacket(x, z) {
+        var data = Buffer.alloc(0);
+        data = Buffer.concat([data, VarInt.encode(x)]);
+        data = Buffer.concat([data, VarInt.encode(z)]);
+        data = Buffer.concat([data, Buffer.from([0x1])]);
+        data = Buffer.concat([data, VarInt.encode(4)]);
+        var chunkData = this.calculateChunkData();
+        data = Buffer.concat([data, VarInt.encode(chunkData.length)]);
+        console.log(data.length);
+        data = Buffer.concat([data, chunkData]);
+        console.log(data.length);
+        data = Buffer.concat([data, VarInt.encode(0)]);
+        var packetData = Buffer.concat([VarInt.encode(34), data]);
+        console.log(packetData.length);
+        var fullPacket = Buffer.concat([VarInt.encode(packetData.length), packetData]);
+        var packet = new Packet(fullPacket, "ClientBound", "Play");
+        return packet;
     }
     static calculateChunkData() {
-        
-        fields = []
-        fieldNames = ["Unsigned Byte", "Palette", "VarInt", ""]
-        fieldNames.forEach((fieldName) => {
-            switch (fieldName) {
-                case "Int":
-                    var temp = Buffer.alloc(4);
-                    temp.writeInt32BE(fields[i]);
-                    data = Buffer.concat([data, temp]);
-                    break;
-                case "Boolean":
-                    if(fields[i]) data = Buffer.concat([data, Buffer.from([0x1])])
-                    else data = Buffer.concat([data, Buffer.from([0x0])]);
-                    break;
-                case "VarInt": 
-                    data = Buffer.concat([data, VarInt.encode(fields[i])]);
-                    break;
-                case "ByteArray":
+        var temp = Buffer.alloc(0);
+        temp = this.calcualteChunkSection(temp);
+        temp = this.calcualteChunkSection(temp);
+        temp = this.calcualteChunkSection(temp);
+        temp = this.calcualteChunkSection(temp);
+        console.log(temp.length);
+        return temp;
+    }
 
-                    break;
-                case "Array of NBT Tag":
+    static calcualteChunkSection(data) {
+        var longs = this.calculateLongs(14);
+        // write bitsPerBlock
+        var temp = Buffer.alloc(1);
+        temp.writeUInt8(14);
+        data = Buffer.concat([data, temp]);
+        // write data length
+        data = Buffer.concat([data, VarInt.encode(longs.length)]);
+        // write data
+        data = Buffer.concat([data, longs]);
+        // write block light and sky light
+        var temp = Buffer.alloc(2048, 0xFF);
+        data = Buffer.concat([data, temp, temp]);
+        console.log(temp.length);
+        console.log(data.length);
+        return data;
+    }
 
-                    break;
+    static calculateLongs(bitsPerBlock) {
+        var longs = [];
+        var blockID = 1;
+        var metadata = 0;
+        var current = 0;
+        var currentI = 64 - bitsPerBlock;
+        var temp = (blockID << 4) | metadata;
+        for(var i = 0; i < 4096; i++) {
+            if(currentI < 0) {
+                var neg = currentI - bitsPerBlock;
+                current |= temp >> -neg;
+                longs.push(current);
+                current = 0;
+                currentI = 64 - -neg;
+                current |= temp << currentI;
+                currentI -= bitsPerBlock;
+            } else {
+                current |= temp << currentI;
+                currentI -= bitsPerBlock;
             }
-        });
+          
+        }
+
+        var data = Buffer.alloc(0);
+        for(var i = 0; i < longs.length; i++) {
+            var temp = Buffer.alloc(8);
+            temp.writeUInt32BE((longs[i] & 0xFFFFFFFF00000000) >>> 32, 0);
+            temp.writeUInt32BE((longs[i] & 0x00000000FFFFFFFF) >>> 0, 4);
+            data = Buffer.concat([data, temp]);
+        }
+        console.log(data.length);
+        return data;
     }
 
 }
@@ -187,6 +210,11 @@ class PacketFactory {
         var fieldNames = packets["ClientBound"][name]["Fields"];
         var data = Buffer.alloc(0);
         var i = 0;
+        if(name == "Chunk Data") {
+            var packet = new Packet(ChunkFactory.createPacket(fields[0], fields[1]), "ClientBound", state);
+            packet.name = "Chunk Data";
+            return packet;
+        }
         fieldNames.forEach((fieldName) => {
             switch(fieldName) {
                 case "VarInt": 
@@ -241,7 +269,7 @@ class PacketFactory {
         var packetData = Buffer.concat([VarInt.encode(packetID), data]);
         var fullPacket = Buffer.concat([VarInt.encode(packetData.length), packetData]);
         var packet = new Packet(fullPacket, "ClientBound", state);
-        console.log("S→C Packet \"" + name + "\"");
+        packet.name = name;
         return packet;
     }
 }
@@ -267,7 +295,9 @@ class Client {
         this.state = state;
     }
     sendPacket(packet) {
+        console.log("S→C Packet \"" + packet.name + "\"");
         this.c.write(packet.buffer);
+        console.log(packet.buffer);
     }
     onDisconect() {
         console.log("disconnect~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
@@ -312,6 +342,11 @@ class Client {
         this.state = "Play";
         this.sendPacket(PacketFactory.createPacket("Join Game", [0, 1, 0, 2, 21, "flat", false], this.state));
         this.sendPacket(PacketFactory.createPacket("Player Position And Look", [0, 64, 0, 0, 0, 0, 0], this.state));
+        this.sendPacket(PacketFactory.createPacket("Chunk Data", [0, 0], this.state));
+        this.sendPacket(PacketFactory.createPacket("Chunk Data", [-1, 0], this.state));
+        this.sendPacket(PacketFactory.createPacket("Chunk Data", [0, -1], this.state));
+        this.sendPacket(PacketFactory.createPacket("Chunk Data", [-1, -1], this.state));
+        console.log(PacketFactory.createPacket("Chunk Data", [-1, -1], this.state).buffer);
     }
 }
 
@@ -367,6 +402,7 @@ class VarInt {
             if (value != 0) {
                 temp |= 0b10000000;
             }
+            console.log("test" + temp);
             bytes.push(temp);
         } while (value != 0);
         return Buffer.from(bytes);
