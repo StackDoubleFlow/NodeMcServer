@@ -130,12 +130,9 @@ class ChunkFactory {
         data = Buffer.concat([data, VarInt.encode(4)]);
         var chunkData = this.calculateChunkData();
         data = Buffer.concat([data, VarInt.encode(chunkData.length)]);
-        console.log(data.length);
         data = Buffer.concat([data, chunkData]);
-        console.log(data.length);
         data = Buffer.concat([data, VarInt.encode(0)]);
-        var packetData = Buffer.concat([VarInt.encode(34), data]);
-        console.log(packetData.length);
+        var packetData = Buffer.concat([VarInt.encode(32), data]);
         var fullPacket = Buffer.concat([VarInt.encode(packetData.length), packetData]);
         var packet = new Packet(fullPacket, "ClientBound", "Play");
         return packet;
@@ -146,7 +143,6 @@ class ChunkFactory {
         temp = this.calcualteChunkSection(temp);
         temp = this.calcualteChunkSection(temp);
         temp = this.calcualteChunkSection(temp);
-        console.log(temp.length);
         return temp;
     }
 
@@ -163,8 +159,6 @@ class ChunkFactory {
         // write block light and sky light
         var temp = Buffer.alloc(2048, 0xFF);
         data = Buffer.concat([data, temp, temp]);
-        console.log(temp.length);
-        console.log(data.length);
         return data;
     }
 
@@ -198,7 +192,6 @@ class ChunkFactory {
             temp.writeUInt32BE((longs[i] & 0x00000000FFFFFFFF) >>> 0, 4);
             data = Buffer.concat([data, temp]);
         }
-        console.log(data.length);
         return data;
     }
 
@@ -297,7 +290,6 @@ class Client {
     sendPacket(packet) {
         console.log("S→C Packet \"" + packet.name + "\"");
         this.c.write(packet.buffer);
-        console.log(packet.buffer);
     }
     onDisconect() {
         console.log("disconnect~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
@@ -329,7 +321,7 @@ class Client {
     SLPRequestHandler(fields) { // 1
         this.sendPacket(PacketFactory.createPacket("SLPResponse", 
         [
-            '{"version":{"name":"1.13.2","protocol":404},"players":{"max":100,"online":1,"sample":[{"name":"StackDoubleFlow","id":"2d553c1d-4eab-4f63-8191-a9b0f9d69d0d"}]},"description":{"text":"Hello world"}}'
+            '{"version":{"name":"1.12.2","protocol":340},"players":{"max":100,"online":1,"sample":[{"name":"StackDoubleFlow","id":"2d553c1d-4eab-4f63-8191-a9b0f9d69d0d"}]},"description":{"text":"Hello world"}}'
         ], this.state));
     }
     PingHandler(fields) { // 2
@@ -346,7 +338,6 @@ class Client {
         this.sendPacket(PacketFactory.createPacket("Chunk Data", [-1, 0], this.state));
         this.sendPacket(PacketFactory.createPacket("Chunk Data", [0, -1], this.state));
         this.sendPacket(PacketFactory.createPacket("Chunk Data", [-1, -1], this.state));
-        console.log(PacketFactory.createPacket("Chunk Data", [-1, -1], this.state).buffer);
     }
 }
 
@@ -402,7 +393,6 @@ class VarInt {
             if (value != 0) {
                 temp |= 0b10000000;
             }
-            console.log("test" + temp);
             bytes.push(temp);
         } while (value != 0);
         return Buffer.from(bytes);

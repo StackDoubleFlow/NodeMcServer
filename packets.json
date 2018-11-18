@@ -36,7 +36,7 @@
         },
         "Plugin Message": {
             "State": "Play",
-            "ID": 10,
+            "ID": 9,
             "Fields": ["Indentifier", "Byte Array"]
         },
         "Keep Alive": {
@@ -63,22 +63,22 @@
         },
         "Join Game": {
             "State": "Play",
-            "ID": 37,
+            "ID": 35,
             "Fields": ["Int", "Unsigned Byte", "Int", "Unsigned Byte", "Unsigned Byte", "String", "Boolean"]
         },
         "Keep Alive": {
             "State": "Play",
-            "ID": 33,
+            "ID": 31,
             "Fields": ["Long"]
         },
         "Player Position And Look": {
             "State": "Play",
-            "ID": 50,
+            "ID": 47,
             "Fields": ["Double", "Double", "Double", "Float", "Float", "Byte", "VarInt"]
         },
         "Chunk Data": {
             "State": "Play",
-            "ID": 34,
+            "ID": 32,
             "Fields": ["Int", "Int", "Boolean", "VarInt", "VarInt", "Byte Array", "VarInt", "Array of NBT Tag"]
         }
     }
